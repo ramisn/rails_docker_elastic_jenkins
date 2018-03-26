@@ -1,0 +1,25 @@
+#!/bin/sh
+
+rm tmp/pids/server.pid
+
+bundle check || bundle install
+
+# wait for postgresql
+until nc -vz postgres 5432 2>/dev/null; do
+  echo "Postgresql is not ready, sleeping."
+  sleep 1
+done
+
+# wait for elasticsearch
+until nc -vz elasticsearch 9200 2>/dev/null; do
+  echo "Elasticsearch is not ready, sleeping."
+  sleep 1
+done
+
+rake db:create
+rake db:migrate
+
+rails s -b 0.0.0.0
+
+# docker build -t test .
+# docker run -d -p 3000:3000 --name railsserver test

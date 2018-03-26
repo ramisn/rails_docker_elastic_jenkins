@@ -1,0 +1,50 @@
+#!/bin/sh
+
+set -x
+
+DOCKER_MACHINE=jenkins
+
+EXISTS=$(docker-machine ls --filter name=$DOCKER_MACHINE -q)
+if [ "$EXISTS" = "" ]; then
+  docker-machine create -d virtualbox $DOCKER_MACHINE
+  eval $(docker-machine env $DOCKER_MACHINE)
+fi
+
+STATE=$(docker-machine ls --filter name=$DOCKER_MACHINE | awk '{print $4}' | tail -1)
+if [ "$STATE" = "Stopped" ]; then
+  docker-machine start $DOCKER_MACHINE
+  eval $(docker-machine env $DOCKER_MACHINE)
+fi
+
+ACTIVE=$(docker-machine ls --filter name=$DOCKER_MACHINE | awk '{print $2}' | tail -1)
+if [ "$ACTIVE" = "-" ]; then
+  eval $(docker-machine env $DOCKER_MACHINE)
+fi
+
+docker stop $(docker ps -a -q)
+docker rm $(docker ps -a -q)
+
+docker-compose build
+docker-compose up -d
+
+IP=$(docker-machine ip $DOCKER_MACHINE)
+
+# wait for rails
+while true
+do
+	response=$(curl http://$IP:3000/api/ping 2>/dev/null)
+  if [ "$response" = "pong" ]; then
+    break
+  fi
+  sleep 1
+done
+
+RAILS_CONTAINER=$(docker ps -a | grep -i 3000 | awk '{print $NF}')
+
+docker exec -i $RAILS_CONTAINER rspec
+RSPEC_RESULT=$?
+
+docker stop $(docker ps -a -q)
+docker rm $(docker ps -a -q)
+
+exit $RSPEC_RESULT
